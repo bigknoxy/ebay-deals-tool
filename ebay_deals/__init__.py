@@ -14,6 +14,13 @@ __all__ = ["__version__", "resolve_version"]
 
 _FALLBACK_VERSION = "0.0.0+unknown"
 
+# Only PEP 440 pre-release spellings. `9.9.9-test` is valid semver but not a
+# valid distribution version, so a tag like that must not reach the metadata.
+_TAG_VERSION = re.compile(
+    r"v?(\d+\.\d+\.\d+"
+    r"(?:(?:\.dev|-dev|-rc|-a|-alpha|-b|-beta)\d*|\+[0-9A-Za-z.]+)?)"
+)
+
 
 def _installed_version() -> str | None:
     """Version of the installed distribution, if this is an installed copy."""
@@ -47,7 +54,7 @@ def _tag_version() -> str | None:
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return None
-    match = re.fullmatch(r"v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)", described)
+    match = _TAG_VERSION.fullmatch(described)
     return match.group(1) if match else None
 
 
