@@ -46,14 +46,17 @@ def current_version() -> str:
 
 def commits_since(tag: str | None) -> list[str]:
     rng = f"{tag}..HEAD" if tag else "HEAD"
+    # NUL-separated records: a commit body contains blank lines of its own, so
+    # splitting `%B` on newlines runs one commit's body into the next commit's
+    # subject and every body line lands in the release notes.
     out = subprocess.run(
-        ["git", "log", "--no-merges", "--pretty=format:%B", rng],
+        ["git", "log", "--no-merges", "--pretty=format:%B%x00", rng],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    return [block for block in out.split("\n\n") if block.strip()]
+    return [record.strip() for record in out.split("\0") if record.strip()]
 
 
 def last_tag() -> str | None:
@@ -67,6 +70,11 @@ def last_tag() -> str | None:
     return tag if match else None
 
 
+def subject_of(message: str) -> str:
+    """First line of a commit message."""
+    return message.strip().splitlines()[0] if message.strip() else ""
+
+
 def next_version(version: str, messages: list[str]) -> str | None:
     """Return the bumped version, or None when nothing warrants a release."""
     match = VERSION_RE.match(version)
@@ -78,7 +86,7 @@ def next_version(version: str, messages: list[str]) -> str | None:
     priority = {"patch": 1, "minor": 2, "major": 3}
     bump = None
     for message in messages:
-        subject = message.strip().splitlines()[0] if message.strip() else ""
+        subject = subject_of(message)
         parsed = CONVENTIONAL.match(subject)
         breaking = "BREAKING CHANGE:" in message or (
             parsed is not None and parsed.group("breaking")
@@ -126,7 +134,7 @@ def release_notes(messages: list[str], version: str) -> str:
         "test": "Tests",
     }
     for message in messages:
-        subject = message.strip().splitlines()[0] if message.strip() else ""
+        subject = subject_of(message)
         parsed = CONVENTIONAL.match(subject)
         breaking = "BREAKING CHANGE:" in message or (
             parsed is not None and parsed.group("breaking")
@@ -167,7 +175,7 @@ def write_version(version: str) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--print",
         dest="show",
@@ -181,6 +189,10 @@ def main(argv=None) -> int:
         "--notes", action="store_true", help="print release notes for the next version"
     )
     args = parser.parse_args(argv)
+    # `--notes` stands alone in the release workflow, so the group cannot be
+    # required; default to --print when neither was given.
+    if not (args.show or args.bump or args.notes):
+        args.show = True
 
     version = current_version()
     messages = commits_since(last_tag())
