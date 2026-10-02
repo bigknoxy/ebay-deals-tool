@@ -50,7 +50,7 @@
     {
       "key": "gpu",
       "label": "Datacenter GPUs",
-      "query": "Tesla M40 24GB",
+      "query": "datacenter GPU 24GB",
       "watch": [
         "VRAM size",
         "cooler type"

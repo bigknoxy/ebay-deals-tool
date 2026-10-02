@@ -99,10 +99,14 @@ ZIP_IN_ADDRESS = re.compile(
     r"drive|dr\.?|court|ct\.?|way|suite|ste\.?|apt\.?|zip|postal|"
     r"shipping address|ship to)\b[^\n]{0,60}\b\d{5}(?:-\d{4})?\b"
 )
+# Specific machine and part identifiers. A vendor name on its own (Dell, HP,
+# NVIDIA) is a category, not a leak; a model or part number is.
 MACHINE_MODEL = re.compile(
     r"(?i)\b(20N20046|T490|T14[0-9]|T5[68]10|T3600|T1700|Z[246]40|KCP4[0-9]{3}|"
     r"M471A[0-9A-Z]+|MTA1[0-9A-Z]+-2G|HMA[0-9]{2}[A-Z]|KVR[0-9]{2}S[0-9]|"
-    r"CT[0-9]{2}G4S[A-Z0-9]+)\b"
+    r"CT[0-9]{2}G4S[A-Z0-9]+|"
+    # GPU board model + VRAM, the shape an upgrade target takes
+    r"(?:Tesla|Quadro)\s+[A-Z][0-9]{1,3}\b)"
 )
 # The owning account appears unavoidably in badge URLs, project URLs, and the
 # org-wide reusable workflow reference. Those are public repo metadata, not a
