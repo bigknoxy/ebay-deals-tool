@@ -1056,6 +1056,7 @@ def _canaries() -> dict[str, tuple[str, bool]]:
         "zip with plus four": ("123 Main Street, Austin, TX 787" + "01-1234", True),
         "machine model": ("compatible with the T4" + "90 20N200" + "46US", True),
         "ram part number": ("M4" + "71A2K43CB1-C" + "TD", True),
+        "gpu board model": ("looking for a Tes" + "la M40 24GB", True),
         "github account url": ("github.com/someone-else/repo", False),
         "numeric timeout": ("default=86400", False),
         "rule divider": ("# " + "-" * 70, False),
@@ -1063,6 +1064,9 @@ def _canaries() -> dict[str, tuple[str, bool]]:
         "redacted secret": ('client_secret = "xxx' + 'xxxxxxxxxxx"', False),
         "env reference": ('client_secret = os.environ["EBAY_CLIENT_SECRET"]', False),
         "prose": ("the quick brown fox jumps over the lazy dog", False),
+        # A vendor alone is a category, not a personal machine.
+        "vendor only": ("Dell and HP workstations", False),
+        "generic gpu": ("datacenter GPU 24GB", False),
         "relative import": ("ebay_deals/transport.py", False),
         "license line": ("Copyright (c) 2026 ebay-deals-tool contributors", False),
         "type hint": ("def f(x: int = 86400) -> tuple[str, ...]:", False),
