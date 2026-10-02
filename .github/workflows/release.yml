@@ -121,18 +121,25 @@ jobs:
       # The tag is the single source of truth for the version, and main never
       # carries a version string. Create and push the tag first so the checkout
       # below can read the version back out of it.
+      # Created over the API rather than `git push`: checkout runs with
+      # persist-credentials: false, and this needs no credential in a URL.
       - name: create the release tag
-        # checkout runs with persist-credentials: false, so the push needs an
-        # explicit authenticated URL. Nothing is left behind in .git/config.
         run: |
+          SHA="$(git rev-parse HEAD)"
           TAG="v${{ needs.version.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "$TAG"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "refs/tags/$TAG"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists; reusing it"
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/$TAG" -f sha="$SHA" >/dev/null
+            echo "created $TAG at $SHA"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: check out the release tag
-        run: git checkout "v${{ needs.version.outputs.version }}"
+        run: |
+          git fetch --tags --force
+          git checkout "v${{ needs.version.outputs.version }}"
       - name: build the source distribution
         run: |
           python3 -c "import ebay_deals; print('building', ebay_deals.__version__)"
