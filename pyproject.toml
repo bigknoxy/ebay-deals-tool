@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ebay-deals-tool"
-version = "0.1.0"
+# Resolved at build time from the git tag, so the tag is the single source of
+# truth and main needs no bot commit (main is PR-only).
+dynamic = ["version"]
 description = "Repeatable, auditable eBay deal hunting with a CLI and a zero-dependency MCP server"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +37,9 @@ ebay-deals = "ebay_deals.cli:main"
 
 [tool.setuptools]
 packages = ["ebay_deals"]
+
+[tool.setuptools.dynamic]
+version = { attr = "ebay_deals.__version__" }
 
 [tool.coverage.run]
 source = ["ebay_deals"]
