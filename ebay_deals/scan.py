@@ -21,6 +21,71 @@ from .store import Store
 from .transport import Blocked, BrowseApiTransport, HtmlTransport
 
 
+# -- Browse API payload mapping ------------------------------------------------
+# The Browse API is the primary backend, so its records must carry the same
+# fields the HTML parser produces; otherwise ranking and reports silently drop
+# every API hit (a None price means no delivered total, so no rank).
+
+def _money(node) -> float | None:
+    """Extract a float from a Browse API {value, currency} money block."""
+    if isinstance(node, dict):
+        node = node.get("value")
+    try:
+        return float(node)
+    except (TypeError, ValueError):
+        return None
+
+
+def _api_shipping(item: dict) -> float | None:
+    """Lowest shipping cost offered for an item. None means unknown."""
+    costs = []
+    for option in item.get("shippingOptions") or []:
+        cost = _money((option.get("shippingCost") or {}))
+        if cost is not None:
+            costs.append(cost)
+    return min(costs) if costs else None
+
+
+def _api_card(item: dict) -> dict:
+    return {
+        "item_id": item.get("itemId"),
+        "title": item.get("title"),
+        "price": _money(item.get("price")),
+        "shipping": _api_shipping(item),
+        "url": item.get("itemWebUrl"),
+        "condition": item.get("condition"),
+    }
+
+
+def _api_item(payload: dict, item_id: str) -> dict:
+    price = _money(payload.get("price"))
+    low = _money(payload.get("lowPrice"))
+    high = _money(payload.get("highPrice"))
+    record = {
+        "kind": "item", "source": "browse_api", "item_id": item_id,
+        "title": payload.get("title"), "url": payload.get("itemWebUrl"),
+        "price": price, "list_low": low, "list_high": high,
+        "offer_count": payload.get("offerCount"),
+        "shipping": _api_shipping(payload),
+        "item_condition": payload.get("condition"),
+        "description": (payload.get("shortDescription") or "")[:400],
+        "seller": payload.get("seller"),
+        "has_variations": bool(payload.get("variations")),
+    }
+    if payload.get("imageDescriptions"):
+        record["image"] = (payload["imageDescriptions"][0] or {}).get("imageUrl")
+    # A lowPrice/highPrice range means variations exist even when the summary
+    # omitted them, so treat the range floor as the comparable price.
+    if record["has_variations"] or (low is not None and high is not None and low != high):
+        record["has_variations"] = True
+        record["price_floor"] = low if low is not None else price
+        record["price_ceiling"] = high
+    if record["shipping"] is not None and record["price"] is not None:
+        record["delivered"] = round(record["price"] + record["shipping"], 2)
+    if record["shipping"] is not None and record.get("price_floor") is not None:
+        record["delivered_floor"] = round(record["price_floor"] + record["shipping"], 2)
+    return record
+
 class DealScanner:
     def __init__(self, state_dir: str | None = None, delay: float | None = None,
                  log=print, backend: str = "auto"):
@@ -41,16 +106,7 @@ class DealScanner:
         category = config.get_category(category_key)
         if self.backend == "api":
             payload = self.api.search(category.query)
-            cards = [
-                {
-                    "item_id": item.get("itemId"),
-                    "title": item.get("title"),
-                    "price": float((item.get("price") or {}).get("value", 0) or 0),
-                    "shipping": 0.0,
-                    "url": item.get("itemWebUrl"),
-                }
-                for item in payload.get("itemSummaries") or []
-            ]
+            cards = [_api_card(item) for item in payload.get("itemSummaries") or []]
         else:
             response = self.html.search(category.query, cache_key=f"search-{category.key}")
             cards = parse_cards(response.text)
@@ -71,13 +127,7 @@ class DealScanner:
             try:
                 if self.backend == "api":
                     payload = self.api.item(item_id)
-                    record = {
-                        "kind": "item", "source": "browse_api", "item_id": item_id,
-                        "title": payload.get("title"), "price": None,
-                        "url": payload.get("itemWebUrl"),
-                        "item_condition": payload.get("condition"),
-                        "description": (payload.get("shortDescription") or "")[:400],
-                    }
+                    record = _api_item(payload, item_id)
                 else:
                     response = self.html.item(item_id)
                     record = parse_item(response.text, item_id)
