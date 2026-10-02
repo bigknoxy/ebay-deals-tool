@@ -1468,23 +1468,48 @@ def test_workflow_job_graph_is_consistent():
     print("ok  workflow job graphs resolve and shell scripts parse")
 
 
-def test_version_is_consistent():
-    """The badge, pyproject, and __init__ must agree on the version."""
-    import re
+def test_version_resolves_and_stays_tag_driven():
+    """Falsifier: the version must come from the tag, not a committed string.
 
+    Main is PR-only, so a bot commit carrying a version would be rejected by
+    branch protection. Two sources of truth would also drift.
+    """
+    import tomllib
+
+    import ebay_deals
+
+    # Precedence: an installed distribution wins, then the tag, then a floor.
+    assert ebay_deals.resolve_version("9.9.9", "1.2.3") == "9.9.9"
+    assert ebay_deals.resolve_version(None, "1.2.3") == "1.2.3"
+    floor = ebay_deals.resolve_version(None, None)
+    assert floor.startswith("0.0.0"), f"unexpected fallback {floor!r}"
+    assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?", ebay_deals.__version__), (
+        f"__version__ is not resolvable: {ebay_deals.__version__!r}"
+    )
+
+    # No hardcoded version may reappear in the package or its metadata.
+    for path in ("ebay_deals/__init__.py", "pyproject.toml"):
+        with open(path) as handle:
+            text = handle.read()
+        assert not re.search(r'^version\s*=\s*"[0-9]', text, re.M), (
+            f"{path} hardcodes a version; the tag is the source of truth"
+        )
     with open("ebay_deals/__init__.py") as handle:
         init = handle.read()
-    match = re.search(r'__version__\s*=\s*"([^"]+)"', init)
-    assert match, "__init__.py has no __version__"
-    version = match.group(1)
-    assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"bad version {version!r}"
-    if os.path.exists("pyproject.toml"):
-        with open("pyproject.toml") as handle:
-            toml = handle.read()
-        found = re.search(r'^version\s*=\s*"([^"]+)"', toml, re.M)
-        assert found and found.group(1) == version, "pyproject version drift"
+    assert '__version__ = "' not in init, (
+        "__init__.py assigns __version__ directly instead of resolving it"
+    )
+
+    # pyproject must read the version dynamically, or the sdist is mislabelled.
+    with open("pyproject.toml", "rb") as handle:
+        data = tomllib.load(handle)
+    assert "version" in data["project"].get("dynamic", []), (
+        "pyproject does not declare a dynamic version"
+    )
+    assert data["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "ebay_deals.__version__"
+
     assert os.path.exists("CHANGELOG.md"), "no CHANGELOG.md for automated releases"
-    print(f"ok  version {version} consistent")
+    print(f"ok  version resolves from the tag ({ebay_deals.__version__})")
 
 
 # Checks that CI's `docs` job runs. Kept as an explicit list so a rename fails
@@ -1492,7 +1517,7 @@ def test_version_is_consistent():
 DOCS_TESTS = (
     "test_docs_commands_are_real",
     "test_readme_badges_are_live_endpoints",
-    "test_version_is_consistent",
+    "test_version_resolves_and_stays_tag_driven",
 )
 
 

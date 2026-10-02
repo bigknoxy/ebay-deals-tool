@@ -58,10 +58,10 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           elif [ "${{ inputs.force }}" = "true" ]; then
-            VERSION="$(python3 -c \
-              "import re,pathlib;t=pathlib.Path('ebay_deals/__init__.py').read_text();\
-               print(re.search(r'__version__ = \"([^\"]+)\"', t).group(1))")"
-            echo "forced release at the current version: $VERSION"
+            # Nothing releasable, but a release was demanded: bump a patch off
+            # the newest tag so the tag still moves forward.
+            VERSION="$(python3 scripts/bump_version.py --print --force-patch)"
+            echo "forced release at version: $VERSION"
             echo "release=true" >> "$GITHUB_OUTPUT"
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           else
@@ -113,14 +113,25 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
-      - name: write the version and rebuild the source distribution
+      # The tag is the single source of truth for the version, and main never
+      # carries a version string. Create and push the tag first so the checkout
+      # below can read the version back out of it.
+      - name: create the release tag
         run: |
-          python3 scripts/bump_version.py --bump
-          git diff --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.version.outputs.version }}" -m "v${{ needs.version.outputs.version }}"
+          git push origin "refs/tags/v${{ needs.version.outputs.version }}"
+      - name: check out the release tag
+        run: git checkout "v${{ needs.version.outputs.version }}"
+      - name: build the source distribution
+        run: |
+          python3 -c "import ebay_deals; print('building', ebay_deals.__version__)"
           python3 -m pip install --quiet build
           python3 -m build --sdist --outdir dist/
       - name: checksums
@@ -139,16 +150,3 @@ jobs:
           prerelease: ${{ startsWith(needs.version.outputs.version, '0.') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: commit the version bump back to main
-        # Keeps __init__.py and pyproject.toml on the tag that produced the
-        # release, so the badge and the checked-out code agree.
-        run: |
-          if git diff --quiet; then
-            echo "version already matches the tag"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ebay_deals/__init__.py pyproject.toml
-          git commit -m "chore: release v${{ needs.version.outputs.version }}"
-          git push origin HEAD:main

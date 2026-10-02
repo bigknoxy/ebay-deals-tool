@@ -4,8 +4,11 @@
 Stdlib only, so the release workflow needs no dependency install to compute a
 version. Usage:
 
-    python3 scripts/bump_version.py --print     # print next version, change nothing
-    python3 scripts/bump_version.py --bump      # write version, print it
+    python3 scripts/bump_version.py --print   # print the next version
+    python3 scripts/bump_version.py --notes   # print its release notes
+
+There is nothing to write: the tag is the version. See
+``ebay_deals.resolve_version``.
 
 Rules (semantic versioning, conventional commits):
 
@@ -32,16 +35,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?(?P<breaking>!)?:\s+(?P<subject>.+)$")
 PATCH_TYPES = {"fix", "perf", "refactor", "test", "docs", "ci", "chore", "build", "style", "revert"}
-# Files that must agree on the version.
-VERSION_FILES = ("ebay_deals/__init__.py", "pyproject.toml")
+
+# The version lives in exactly one place: the tag. Nothing on main carries it,
+# because main is PR-only and a bot commit there would be blocked.
+# Used only before the first tag exists.
+INITIAL_VERSION = "0.1.0"
 
 
 def current_version() -> str:
-    with open(os.path.join(ROOT, "ebay_deals", "__init__.py")) as handle:
-        match = re.search(r'__version__\s*=\s*"([^"]+)"', handle.read())
-    if not match:
-        raise SystemExit("ebay_deals/__init__.py has no __version__")
-    return match.group(1)
+    """The newest version tag, or the release floor on a fresh repo."""
+    tag = last_tag()
+    return tag.lstrip("v") if tag else INITIAL_VERSION
 
 
 def commits_since(tag: str | None) -> list[str]:
@@ -157,46 +161,33 @@ def release_notes(messages: list[str], version: str) -> str:
     return "\n".join(notes).rstrip() + "\n"
 
 
-def write_version(version: str) -> None:
-    path = os.path.join(ROOT, "ebay_deals", "__init__.py")
-    with open(path) as handle:
-        text = handle.read()
-    text = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{version}"', text)
-    with open(path, "w") as handle:
-        handle.write(text)
-
-    path = os.path.join(ROOT, "pyproject.toml")
-    with open(path) as handle:
-        text = handle.read()
-    text = re.sub(r'^version\s*=\s*"[^"]+"', f'version = "{version}"', text, count=1, flags=re.M)
-    with open(path, "w") as handle:
-        handle.write(text)
-
-
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
+    parser.add_argument(
         "--print",
         dest="show",
         action="store_true",
         help="print the next version without writing anything",
     )
-    group.add_argument(
-        "--bump", action="store_true", help="write the next version to every versioned file"
-    )
     parser.add_argument(
         "--notes", action="store_true", help="print release notes for the next version"
     )
+    parser.add_argument(
+        "--force-patch",
+        action="store_true",
+        help="release a patch even when no commit warrants it",
+    )
     args = parser.parse_args(argv)
-    # `--notes` stands alone in the release workflow, so the group cannot be
-    # required; default to --print when neither was given.
-    if not (args.show or args.bump or args.notes):
+    if not (args.show or args.notes):
         args.show = True
 
     version = current_version()
     messages = commits_since(last_tag())
     target = next_version(version, messages)
+
+    if target is None and args.force_patch:
+        major, minor, patch = (int(part) for part in version.split("."))
+        target = f"{major}.{minor}.{patch + 1}"
 
     if target is None:
         # Nothing releasable. Explain on stderr and print no version, so a
@@ -208,9 +199,6 @@ def main(argv=None) -> int:
     if args.notes:
         print(release_notes(messages, target), end="")
     if args.show:
-        print(target)
-    if args.bump:
-        write_version(target)
         print(target)
     return 0
 
