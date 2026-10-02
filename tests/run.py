@@ -1508,6 +1508,27 @@ def test_version_resolves_and_stays_tag_driven():
     )
     assert data["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "ebay_deals.__version__"
 
+    # A tag is only useful if it maps to a legal distribution version.
+    # `v9.9.9-test` is valid semver and invalid PEP 440: setuptools refuses to
+    # build long after the tag exists, so the tag must not resolve at all.
+    accepted = {
+        "v1.2.3": "1.2.3",
+        "v0.1.1": "0.1.1",
+        "v1.2.3-rc1": "1.2.3-rc1",
+        "v1.2.3.dev2": "1.2.3.dev2",
+        "v1.2.3+build.5": "1.2.3+build.5",
+        "1.2.3": "1.2.3",
+    }
+    for tag, expected in accepted.items():
+        match = ebay_deals._TAG_VERSION.fullmatch(tag)
+        assert match, f"rejected a legal tag: {tag}"
+        assert match.group(1) == expected, f"{tag} mapped to {match.group(1)}"
+        assert re.fullmatch(
+            r"[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+|\+[0-9A-Za-z.]+)?", match.group(1)
+        ), f"illegal version {match.group(1)}"
+    for tag in ("v9.9.9-test", "v1.2", "not-a-tag", "v1.2.3.4", "v1.2.3-test"):
+        assert not ebay_deals._TAG_VERSION.fullmatch(tag), f"accepted an illegal version tag: {tag}"
+
     assert os.path.exists("CHANGELOG.md"), "no CHANGELOG.md for automated releases"
     print(f"ok  version resolves from the tag ({ebay_deals.__version__})")
 
