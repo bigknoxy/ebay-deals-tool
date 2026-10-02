@@ -146,7 +146,9 @@ def load_categories(path: str | None = None) -> tuple[Category, ...]:
         candidates.append(path)
     env_path = os.environ.get("EBAY_DEALS_CATEGORIES")
     if env_path:
-        candidates.append(env_path)
+        # MCP clients pass the value verbatim and never run a shell, so `~` is
+        # still unexpanded by the time it reaches us.
+        candidates.append(os.path.expanduser(env_path))
     user_path = os.path.join(os.path.expanduser("~"), ".config", "ebay-deals", "categories.json")
     candidates.append(user_path)
     for candidate in candidates:
