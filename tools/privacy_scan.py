@@ -89,6 +89,14 @@ PLACEHOLDER = re.compile(
 # Human-readable, all-lowercase test doubles ("super-secret-value") read as
 # words. Real generated secrets are high-entropy and mix case and digits.
 READABLE_TEST_DOUBLE = re.compile(r"^[a-z]+([-_][a-z0-9]+)*$")
+# An indirection, not a secret: ${GITHUB_TOKEN}, $TOKEN, %TOKEN%, os.environ.
+# Matched anywhere in the value, because a URL embedding a token reference is
+# still a reference and not a credential.
+SECRET_REFERENCE = re.compile(
+    r"(\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*"
+    r"|%[A-Za-z_][A-Za-z0-9_]*%|\$\(|\bos\.environ|\bprocess\.env"
+    r"|\bsecrets\.|\bgithub\.token\b|\bgetenv\b)"
+)
 
 # --- identity and machine shapes -------------------------------------------
 HOME_PATH = re.compile(r"/(?:home|Users)/[A-Za-z0-9._-]+/")
@@ -176,6 +184,7 @@ def scan_text(path: str, text: str) -> list[tuple[str, int, str]]:
                         PLACEHOLDER.match(value)
                         or value.endswith("()")
                         or READABLE_TEST_DOUBLE.match(value)
+                        or SECRET_REFERENCE.search(value)
                     ):
                         continue
                     snippet = f"{match.group(1)} = <redacted>"
