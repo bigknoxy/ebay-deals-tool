@@ -21,6 +21,7 @@ CAPTCHA solving, no proxy rotation, no user-agent rotation, no cookie forging.
 
 from __future__ import annotations
 
+import base64
 import gzip
 import json
 import os
@@ -188,17 +189,28 @@ class BrowseApiTransport:
     def configured(self) -> bool:
         return bool(self.client_id and self.client_secret)
 
+    def _basic_auth_header(self) -> str:
+        """HTTP Basic header for the token endpoint.
+
+        eBay authenticates the client with an ``Authorization: Basic`` header
+        built from the App ID and Client Secret, not with form fields in the
+        body. Sending them as body parameters makes eBay answer
+        ``invalid_client / client authentication failed`` even when the
+        credential pair is perfectly valid.
+        """
+        raw = f"{self.client_id}:{self.client_secret}".encode()
+        return "Basic " + base64.b64encode(raw).decode("ascii")
+
     def _access_token(self) -> str:
         if self._token and self._token[1] > time.time() + 60:
             return self._token[0]
-        # client_credentials is a POST with form-encoded body
+        # client_credentials: POST, form-encoded body, Basic auth header.
         proc = subprocess.run(
             ["curl", "-s", "-X", "POST", f"https://{self.host}{OAUTH_PATH}",
              "-H", "Content-Type: application/x-www-form-urlencoded",
+             "-H", f"Authorization: {self._basic_auth_header()}",
              "--data-urlencode", "grant_type=client_credentials",
-             "--data-urlencode", f"scope=https://{self.host}/oauth/api_scope",
-             "--data-urlencode", f"client_id={self.client_id}",
-             "--data-urlencode", f"client_secret={self.client_secret}"],
+             "--data-urlencode", f"scope=https://{self.host}/oauth/api_scope"],
             capture_output=True, text=True,
         )
         try:
@@ -251,5 +263,21 @@ class BrowseApiTransport:
         })
         return self._api(url)
 
+    @staticmethod
+    def normalise_item_id(item_id: str) -> str:
+        """Build the identifier getItem actually accepts.
+
+        The Browse API keys listings as ``v1|<legacyId>|<suffix>`` and
+        ``getItem`` 404s on a bare legacy id. Search results already carry the
+        full form, so keep it when present rather than reconstructing it from
+        digits (which would silently drop listings whose suffix is not 0).
+        """
+        item_id = (item_id or "").strip()
+        if item_id.startswith("v1|"):
+            return item_id
+        digits = "".join(ch for ch in item_id if ch.isdigit())
+        return f"v1|{digits}|0" if digits else item_id
+
     def item(self, item_id: str) -> dict:
-        return self._api(f"https://{self.host}{BROWSE_ITEM_PATH.format(item_id=item_id)}")
+        path = BROWSE_ITEM_PATH.format(item_id=self.normalise_item_id(item_id))
+        return self._api(f"https://{self.host}{path}")

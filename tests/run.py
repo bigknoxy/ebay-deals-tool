@@ -161,6 +161,28 @@ def test_categories_config_driven():
     print("ok  categories load from config file")
 
 
+def test_api_item_id_normalisation():
+    from ebay_deals.transport import BrowseApiTransport as T
+    # getItem 404s on a bare legacy id; the full v1|id|suffix form is required
+    assert T.normalise_item_id("224440224549") == "v1|224440224549|0"
+    assert T.normalise_item_id("v1|224440224549|0") == "v1|224440224549|0"
+    assert T.normalise_item_id("v1|999|7") == "v1|999|7"
+    assert T.normalise_item_id("  v1|999|7 ") == "v1|999|7"
+    print("ok  Browse item id normalisation")
+
+
+def test_api_basic_auth_header():
+    import base64
+    from ebay_deals.transport import BrowseApiTransport as T
+    api = T(log=lambda *a: None)
+    api.client_id, api.client_secret = "id-value", "secret-value"
+    header = api._basic_auth_header()
+    assert header.startswith("Basic ")
+    decoded = base64.b64decode(header.split(" ", 1)[1]).decode()
+    assert decoded == "id-value:secret-value"
+    print("ok  OAuth Basic auth header encoding")
+
+
 def test_credentials_precedence(tmpdir=None):
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "credentials.json")
