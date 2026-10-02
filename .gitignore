@@ -1,0 +1,22 @@
+# secrets - never commit
+credentials.json
+*.credentials
+.env
+.env.*
+
+# local evidence and caches
+*.html
+.cache/
+runs/
+state/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# editors / os
+.DS_Store
+*.swp
+.idea/
+.vscode/

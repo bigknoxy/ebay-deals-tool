@@ -1,0 +1,21 @@
+{
+  "_comment": "Copy to ~/.config/ebay-deals/categories.json (gitignored) or point $EBAY_DEALS_CATEGORIES at your own copy. Categories are data, not code: keep personal hardware models and upgrade targets out of version control.",
+  "categories": [
+    {"key": "cpu", "label": "Standalone server CPUs", "query": "Xeon E5-2680 v4",
+     "watch": ["cores", "SR code", "TDP"]},
+    {"key": "mobo", "label": "X99 motherboards", "query": "X99 motherboard LGA2011-v3",
+     "watch": ["DDR3 vs DDR4", "socket"]},
+    {"key": "combo", "label": "CPU + motherboard combos", "query": "X99 CPU motherboard combo",
+     "watch": ["exact CPU model", "RAM included?"]},
+    {"key": "workstation", "label": "Workstations", "query": "Dell Precision T5810 barebone",
+     "watch": ["what is included", "base price is the lowest variation"]},
+    {"key": "mini", "label": "Mini PC barebones", "query": "OptiPlex Micro barebone",
+     "watch": ["barebone vs complete", "power adapter?"]},
+    {"key": "gpu", "label": "Datacenter GPUs", "query": "Tesla M40 24GB",
+     "watch": ["VRAM size", "cooler type"]},
+    {"key": "ram_server", "label": "Server DDR4 ECC RAM", "query": "DDR4 ECC 32GB 1600",
+     "watch": ["ECC vs non-ECC", "rank"]},
+    {"key": "ram_laptop", "label": "Laptop DDR4 SO-DIMM", "query": "DDR4 SO-DIMM 2666 laptop memory 260 pin",
+     "watch": ["260-pin SO-DIMM, not desktop DIMM", "non-ECC unbuffered", "single stick vs multi-pack"]}
+  ]
+}
