@@ -292,6 +292,31 @@ def test_categories_config_driven():
     print("ok  categories load from config file")
 
 
+def test_categories_env_var_expands_tilde():
+    """MCP clients hand over the env value verbatim, so `~` reaches us raw."""
+    saved = os.environ.get("EBAY_DEALS_CATEGORIES")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            path = os.path.join(home, ".config", "ebay-deals", "categories.json")
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w") as handle:
+                json.dump({"categories": [{"key": "w", "label": "W", "query": "w"}]}, handle)
+            os.environ["EBAY_DEALS_CATEGORIES"] = "~/.config/ebay-deals/categories.json"
+            os.environ["HOME"] = home
+            loaded = config.load_categories()
+            assert loaded[0].key == "w", "a tilde env path was not expanded"
+            assert not config.CATEGORIES_SOURCE.startswith("~")
+    finally:
+        if saved is None:
+            os.environ.pop("EBAY_DEALS_CATEGORIES", None)
+        else:
+            os.environ["EBAY_DEALS_CATEGORIES"] = saved
+        os.environ.pop("HOME", None)
+    config.load_categories()
+    print("ok  tilde in EBAY_DEALS_CATEGORIES expands")
+
+
 def test_categories_empty_is_rejected():
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "categories.json")

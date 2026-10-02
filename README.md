@@ -91,7 +91,7 @@ ebay-deals status
     "ebay-deals": {
       "type": "local",
       "command": ["python3", "-m", "ebay_deals.mcp_server"],
-      "environment": { "EBAY_DEALS_CATEGORIES": "~config/ebay-deals/categories.json" }
+      "environment": { "EBAY_DEALS_CATEGORIES": "~/.config/ebay-deals/categories.json" }
     }
   }
 }
@@ -122,7 +122,7 @@ Your categories, credentials, reports, and HTML cache all live under
 ## Development
 
 ```bash
-python3 -m tests.run                    # 49 offline tests
+python3 -m tests.run                    # 54 offline tests
 python3 -m tools.privacy_scan           # secret and PII gate
 PYTHON=path/to/python sh scripts/coverage.sh   # 80% floor
 sh scripts/smoke.sh                     # end-to-end without network
