@@ -1,0 +1,154 @@
+name: Release
+
+# Automated versioning. Conventional commits since the last tag decide the next
+# version; there is no manual version bump anywhere in this repo.
+#
+#   fix/perf/refactor/test/docs/ci/chore/build/style -> patch
+#   feat                                           -> minor
+#   feat! or "BREAKING CHANGE:"                     -> major (minor, while 0.x)
+#   anything else                                  -> no release
+#
+# Nothing is published to PyPI: this is a `pipx install git+...` tool, so a
+# source distribution plus a GitHub release is the whole install story.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Release even if no conventional commit warrants it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  version:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      notes: ${{ steps.notes.outputs.notes }}
+      release: ${{ steps.resolve.outputs.release }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - id: resolve
+        name: Derive next version from conventional commits
+        run: |
+          # --print writes the version to stdout and the reason to stderr, so a
+          # no-op release leaves VERSION empty instead of parsing prose.
+          VERSION="$(python3 scripts/bump_version.py --print)"
+          if [ -n "$VERSION" ]; then
+            echo "next version: $VERSION"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.force }}" = "true" ]; then
+            VERSION="$(python3 -c \
+              "import re,pathlib;t=pathlib.Path('ebay_deals/__init__.py').read_text();\
+               print(re.search(r'__version__ = \"([^\"]+)\"', t).group(1))")"
+            echo "forced release at the current version: $VERSION"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "no releasable commits since the last tag; nothing to do"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+          fi
+      - id: notes
+        name: Generate release notes
+        if: steps.resolve.outputs.release == 'true'
+        run: |
+          {
+            echo 'notes<<__NOTES__'
+            python3 scripts/bump_version.py --notes
+            echo '__NOTES__'
+          } >> "$GITHUB_OUTPUT"
+
+  # Nothing ships without the full suite green at the release commit.
+  verify:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: tests
+        run: python3 -m tests.run
+      - name: docs drift
+        run: python3 -m tests.run --docs
+      - name: dependency-free packaging check
+        run: sh scripts/no-third-party.sh
+      - name: coverage gate
+        run: |
+          python3 -m pip install --quiet coverage
+          sh scripts/coverage.sh
+      - name: secret and PII scan
+        run: python3 -m tools.privacy_scan
+
+  release:
+    needs: [version, verify]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: write the version and rebuild the source distribution
+        run: |
+          python3 scripts/bump_version.py --bump
+          git diff --stat
+          python3 -m pip install --quiet build
+          python3 -m build --sdist --outdir dist/
+      - name: checksums
+        working-directory: dist
+        run: sha256sum ./*.tar.gz | sed 's| \./| |' > SHA256SUMS
+      - name: create the GitHub release
+        uses: softprops/action-gh-release@4d8ab33c14495378882c8fef6babbed32e187639 # v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          name: v${{ needs.version.outputs.version }}
+          body: ${{ needs.version.outputs.notes }}
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          draft: false
+          prerelease: ${{ startsWith(needs.version.outputs.version, '0.') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: commit the version bump back to main
+        # Keeps __init__.py and pyproject.toml on the tag that produced the
+        # release, so the badge and the checked-out code agree.
+        run: |
+          if git diff --quiet; then
+            echo "version already matches the tag"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ebay_deals/__init__.py pyproject.toml
+          git commit -m "chore: release v${{ needs.version.outputs.version }}"
+          git push origin HEAD:main
