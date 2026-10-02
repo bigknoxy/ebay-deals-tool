@@ -44,9 +44,9 @@ DESKTOP_UA = (
 
 SEARCH_HOST = "https://m.ebay.com/sch/i.html"
 ITEM_URL = "https://m.ebay.com/itm/{item_id}"
-BROWSE_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-BROWSE_ITEM_URL = "https://api.ebay.com/buy/browse/v1/item/{item_id}"
-OAUTH_URL = "https://api.ebay.com/identity/v1/oauth2/token"
+BROWSE_SEARCH_PATH = "/buy/browse/v1/item_summary/search"
+BROWSE_ITEM_PATH = "/buy/browse/v1/item/{item_id}"
+OAUTH_PATH = "/identity/v1/oauth2/token"
 
 CHALLENGE_MARKERS = ("Pardon Our Interruption", "Robot or Human?", "Enter the characters you see")
 
@@ -181,6 +181,8 @@ class BrowseApiTransport:
         self.marketplace_id = creds["marketplace_id"] or "EBAY_US"
         self.log = log
         self._token: tuple[str, float] | None = None
+        #: Base host, overridable so a diagnostic can probe sandbox too.
+        self.host = "api.ebay.com"
 
     @property
     def configured(self) -> bool:
@@ -191,10 +193,10 @@ class BrowseApiTransport:
             return self._token[0]
         # client_credentials is a POST with form-encoded body
         proc = subprocess.run(
-            ["curl", "-s", "-X", "POST", OAUTH_URL,
+            ["curl", "-s", "-X", "POST", f"https://{self.host}{OAUTH_PATH}",
              "-H", "Content-Type: application/x-www-form-urlencoded",
              "--data-urlencode", "grant_type=client_credentials",
-             "--data-urlencode", "scope=https://api.ebay.com/oauth/api_scope",
+             "--data-urlencode", f"scope=https://{self.host}/oauth/api_scope",
              "--data-urlencode", f"client_id={self.client_id}",
              "--data-urlencode", f"client_secret={self.client_secret}"],
             capture_output=True, text=True,
@@ -243,11 +245,11 @@ class BrowseApiTransport:
 
     def search(self, query: str, limit: int = 50, page: int = 1,
                sort: str = "price_asc") -> dict:
-        url = BROWSE_SEARCH_URL + "?" + urllib.parse.urlencode({
+        url = f"https://{self.host}{BROWSE_SEARCH_PATH}?" + urllib.parse.urlencode({
             "q": query, "limit": limit, "offset": (page - 1) * limit,
             "sort": sort,
         })
         return self._api(url)
 
     def item(self, item_id: str) -> dict:
-        return self._api(BROWSE_ITEM_URL.format(item_id=item_id))
+        return self._api(f"https://{self.host}{BROWSE_ITEM_PATH.format(item_id=item_id)}")

@@ -117,7 +117,23 @@ def cmd_status(args) -> int:
 def cmd_credentials(args) -> int:
     """Report whether developer credentials resolve, without revealing them."""
     from .credentials import describe
-    print(json.dumps(describe(), indent=2))
+    report = describe()
+    if args.check:
+        from .transport import BrowseApiTransport, Blocked
+        api = BrowseApiTransport()
+        results = {}
+        for host in ("api.ebay.com", "api.sandbox.ebay.com"):
+            api.host = host
+            api._token = None
+            try:
+                api._access_token()
+                results[host] = "OK"
+            except Blocked as exc:
+                results[host] = str(exc)
+            except Exception as exc:  # network, curl missing
+                results[host] = f"{type(exc).__name__}: {exc}"
+        report["oauth"] = results
+    print(json.dumps(report, indent=2))
     return 0
 
 
@@ -127,7 +143,10 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("categories").set_defaults(func=cmd_categories)
-    sub.add_parser("credentials").set_defaults(func=cmd_credentials)
+    p_creds = sub.add_parser("credentials")
+    p_creds.add_argument("--check", action="store_true",
+                         help="attempt a real OAuth token request; prints status only")
+    p_creds.set_defaults(func=cmd_credentials)
 
     p_search = sub.add_parser("search")
     p_search.add_argument("categories", nargs="*")
