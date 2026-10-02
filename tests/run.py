@@ -1071,6 +1071,19 @@ def _canaries() -> dict[str, tuple[str, bool]]:
         "license line": ("Copyright (c) 2026 ebay-deals-tool contributors", False),
         "type hint": ("def f(x: int = 86400) -> tuple[str, ...]:", False),
         "test double secret": ('api.client_secret = "super-secret-value"', False),
+        # A token reference is indirection, not a credential. The value here is
+        # high-entropy except for the reference, so only the reference can save
+        # it: this pins that the exemption is narrow.
+        "token reference in url": (
+            'git push "https://x-access-token:${GITHUB_TOKEN}@github.com/o/r.git"',
+            False,
+        ),
+        "bare env reference": ('client_secret = "$EBAY_CLIENT_SECRET"', False),
+        # The same shape, with the reference gone, is a live credential.
+        "live secret in url": (
+            'git push "https://x-access-token:7Kd2Qp' + 'Lm9Rt4Xw@github.com/o/r.git"',
+            True,
+        ),
     }
 
 
