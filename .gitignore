@@ -19,6 +19,11 @@ htmlcov/
 .venv/
 venv/
 
+# build artifacts
+build/
+dist/
+*.egg-info/
+
 # editors / os
 .DS_Store
 *.swp

@@ -1177,6 +1177,30 @@ def test_privacy_scan_is_clean_on_this_repository():
     print("ok  no secrets or personal data in tracked files")
 
 
+def test_no_build_artifacts_are_tracked():
+    """Falsifier: a local `python -m build` must not leave junk in git."""
+    import subprocess
+
+    listing = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True).stdout
+    tracked = [line for line in listing.splitlines() if line]
+    offenders = [
+        path
+        for path in tracked
+        if path.startswith(("dist/", "build/"))
+        or ".egg-info/" in path
+        or path.endswith((".pyc", ".pyo"))
+    ]
+    assert not offenders, f"generated artifacts are tracked: {offenders}"
+
+    ignored = set()
+    if os.path.exists(".gitignore"):
+        with open(".gitignore") as handle:
+            ignored = {line.strip().rstrip("/") for line in handle if line.strip()}
+    for pattern in ("*.egg-info", "build", "dist"):
+        assert pattern in ignored, f".gitignore does not ignore {pattern}"
+    print(f"ok  no generated artifacts tracked across {len(tracked)} files")
+
+
 # --------------------------------------------------------------------------
 # repository hygiene
 # --------------------------------------------------------------------------
