@@ -1,0 +1,2 @@
+[console_scripts]
+ebay-deals = ebay_deals.cli:main

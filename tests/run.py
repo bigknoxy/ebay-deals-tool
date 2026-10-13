@@ -1306,6 +1306,16 @@ def test_declared_dependencies_are_stdlib_only():
         module_name, _, func_name = entry.partition(":")
         module = __import__(module_name, fromlist=["_"])
         assert callable(getattr(module, func_name, None)), f"{entry} is not callable"
+
+    # setuptools rejects a TOML-table license by 2027 and warns today. A string
+    # is the SPDX form, and license-files must still ship the LICENSE.
+    license_field = data["project"].get("license")
+    assert isinstance(license_field, str), "project.license must be an SPDX string, not a table"
+    assert "license-files" in data["project"], "license-files must ship LICENSE"
+    build_requires = data["build-system"]["requires"]
+    assert any(spec.startswith("setuptools>=77") for spec in build_requires), (
+        "the SPDX license string requires setuptools>=77"
+    )
     print("ok  pyproject is stdlib-only and its console script resolves")
 
 
